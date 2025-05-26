@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoVision - Início</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    body {
+      font-family: Arial;
+      padding: 20px;
+      text-align: center;
+    }
+    video, img {
+      border: 2px solid #4CAF50;
+      border-radius: 8px;
+      width: 300px;
+      height: 225px;
+      object-fit: contain;
+      background-color: #fff;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 8px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      margin: 5px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>- EcoVision - Início</h2>
+
+  <div>
+    <video id="video" autoplay style="display: none;"></video>
+    <img id="preview" src="https://via.placeholder.com/300x225?text=Sem+Imagem" alt="Prévia da foto">
+    <canvas id="canvas" width="300" height="225" style="display: none;"></canvas>
+  </div>
+
+  <div>
+    <button onclick="abrirCamera()">Abrir Câmera</button>
+    <button onclick="capturarFoto()" id="btnCapturar" style="display: none;">Tirar Foto</button>
+    <button onclick="document.getElementById('inputFoto').click()">Carregar da Galeria</button>
+    <input type="file" id="inputFoto" accept="image/*" style="display: none;" onchange="carregarGaleria()">
+  </div>
+
+  <div id="result"></div>
+
+<script>
+	if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('Service Worker registrado'))
+    .catch((error) => console.log('Erro no Service Worker:', error));
+}
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const preview = document.getElementById('preview');
+  const resultDiv = document.getElementById('result');
+  let streamAtivo = null;
+
+  function abrirCamera() {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(stream => {
+        streamAtivo = stream;
+        video.srcObject = stream;
+        video.style.display = 'block';
+        preview.style.display = 'none';
+        document.getElementById('btnCapturar').style.display = 'inline-block';
+      })
+      .catch(err => {
+        alert('Erro ao acessar a câmera: ' + err.message);
+      });
+  }
+
+  function capturarFoto() {
+    const contexto = canvas.getContext('2d');
+    contexto.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg');
+    preview.src = dataUrl;
+    preview.style.display = 'block';
+    video.style.display = 'none';
+
+    pararCamera();
+
+    resultDiv.innerHTML = 'Foto capturada e enviada para a API com sucesso.';
+    reconhecer();
+  }
+
+  function pararCamera() {
+    if (streamAtivo) {
+      streamAtivo.getTracks().forEach(track => track.stop());
+      streamAtivo = null;
+    }
+  }
+ 
+  function carregarGaleria() {
+    const arquivo = document.getElementById('inputFoto').files[0];
+    if (!arquivo) return;
+
+    const leitor = new FileReader();
+    leitor.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        const contexto = canvas.getContext('2d');
+        contexto.clearRect(0, 0, canvas.width, canvas.height);
+        contexto.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        preview.src = e.target.result;
+        preview.style.display = 'block';
+        video.style.display = 'none';
+
+        resultDiv.innerHTML = 'Imagem da galeria carregada e enviada para a API com sucesso.';
+        reconhecer();
+      };
+      img.src = e.target.result;
+    };
+    leitor.readAsDataURL(arquivo);
+  }
+
+  function getBase64FromCanvas() {
+    return canvas.toDataURL('image/jpeg').split(',')[1];
+  }
+
+  async function reconhecer() {
+    const base64Image = getBase64FromCanvas();
+    resultDiv.innerHTML = "Analisando imagem...";
+
+    try {
+      const response = await fetch("https://api-inference.huggingface.co/models/google/vit-base-patch16-224", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer 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",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ inputs: base64Image })
+      });
+
+      if (!response.ok) throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
+
+      const data = await response.json();
+      const label = data[0]?.label || null;
+
+      if (label) {
+        resultDiv.innerHTML = `<p>Reconhecido: <strong>${label}</strong>. Buscando no DuckDuckGo...</p>`;
+        buscarNoDuckDuckGo(label);
+      } else {
+        resultDiv.innerHTML = `<p style="color:red;">Não foi possível reconhecer.</p>`;
+      }
+    } catch (error) {
+      resultDiv.innerHTML = `<p style="color:red;">${error.message}</p>`;
+    }
+  }
+
+  function buscarNoDuckDuckGo(label) {
+  const termosExtras = "DIY passo a passo tutorial ideias criativas -comprar -loja -venda";
+  const query = encodeURIComponent(`${label} ${termosExtras}`);
+  window.open(`https://duckduckgo.com/?q=${query}&iax=images&ia=images`, '_blank');
+
+  }
+
+</script>
+
+</body>
+</html>
